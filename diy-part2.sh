@@ -1,20 +1,24 @@
 #!/bin/bash
 #
-# https://github.com/P3TERX/Actions-OpenWrt
-# File name: diy-part2.sh
-# Description: OpenWrt DIY script part 2 (After Update feeds)
-#
-# Copyright (c) 2019-2024 P3TERX <https://p3terx.com>
-#
-# This is free software, licensed under the MIT License.
-# See /LICENSE for more information.
+# Cetron CT3003 定制版 diy-part2.sh
+# 作用：在 feeds 安装完成之后，修改源码里的默认值（主题、主机名、时区、IPv4 单栈）
+# 执行目录：OpenWrt 源码根目录
 #
 
-# Modify default IP
-#sed -i 's/192.168.1.1/192.168.50.5/g' package/base-files/files/bin/config_generate
+# 1. 默认主题改为 Vantage（LuCI 集合包默认依赖 bootstrap，改成 vantage）
+find feeds/luci/collections -name Makefile -exec sed -i 's/luci-theme-bootstrap/luci-theme-vantage/g' {} \;
 
-# Modify default theme
-#sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/collections/luci/Makefile
+# 2. 主机名
+sed -i "s/hostname='LEDE'/hostname='CT3003'/" package/base-files/files/bin/config_generate
 
-# Modify hostname
-#sed -i 's/OpenWrt/P3TERX-Router/g' package/base-files/files/bin/config_generate
+# 3. 时区改为中国标准时间（默认是 GMT0，不装 zonename 会显示成 UTC）
+sed -i "s/timezone='GMT0'/timezone='CST-8'/" package/base-files/files/bin/config_generate
+
+# 4. 默认局域网地址保持 192.168.1.1；如需改成别的，取消下面这行注释并改数字
+#sed -i 's/192.168.1.1/192.168.100.2/g' package/base-files/files/bin/config_generate
+
+# 5. IPv4 单栈：让首次生成配置时完全不创建 IPv6 地址段与 wan6
+#    （config_generate 里所有 IPv6 初始化都用 /proc/sys/net/ipv6 做判断，屏蔽掉即可）
+sed -i 's|\[ -e /proc/sys/net/ipv6 \]|[ -e /proc/sys/net/ipv6-disabled ]|g' package/base-files/files/bin/config_generate
+
+echo "diy-part2 done."
