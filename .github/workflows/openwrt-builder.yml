@@ -17,6 +17,7 @@ on:
   workflow_dispatch:
 
 env:
+  # Lean's OpenWrt 源码（Cetron CT3003 / MT7981 由 mediatek-filogic 目标支持）
   REPO_URL: https://github.com/coolsnowwolf/lede
   REPO_BRANCH: master
   FEEDS_CONF: feeds.conf.default
@@ -26,11 +27,14 @@ env:
   UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
+  # 固件体积上限（MB）：CT3003 是 128M NAND，这里卡到 58M
+  MAX_FIRMWARE_MB: 58
   TZ: Asia/Shanghai
 
 jobs:
   build:
     runs-on: ubuntu-22.04
+    timeout-minutes: 360
 
     steps:
     - name: Checkout
@@ -78,6 +82,18 @@ jobs:
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
 
+    - name: Validate target config
+      run: |
+        cd openwrt
+        make defconfig
+        echo "==== 关键配置检查 ===="
+        grep -q '^CONFIG_TARGET_mediatek_filogic_DEVICE_cetron_ct3003=y' .config \
+          || { echo "❌ 没有选中 Cetron CT3003，请检查 .config"; exit 1; }
+        grep -q '^CONFIG_PACKAGE_luci-app-passwall2=y' .config || echo "⚠️ PassWall2 未选中"
+        grep -q '^CONFIG_PACKAGE_luci-theme-vantage=y' .config || echo "⚠️ Vantage 主题未选中"
+        echo "版本号：$(grep '^CONFIG_VERSION_NUMBER' .config)"
+        echo "IPv6 组件 odhcp6c：$(grep -c '^CONFIG_PACKAGE_odhcp6c=y' .config || true)"
+
     - name: Download package
       id: package
       run: |
@@ -101,6 +117,21 @@ jobs:
     - name: Check space usage
       if: (!cancelled())
       run: df -hT
+
+    - name: Check firmware size
+      if: steps.compile.outputs.status == 'success' && !cancelled()
+      run: |
+        cd openwrt/bin/targets/*/*
+        ls -lh
+        fw=$(ls *sysupgrade*.bin 2>/dev/null | head -1)
+        [ -z "$fw" ] && { echo "❌ 未找到 sysupgrade 固件"; exit 1; }
+        size=$(stat -c %s "$fw")
+        mb=$((size / 1024 / 1024))
+        echo "固件 $fw 体积 ${mb}MB，上限 ${MAX_FIRMWARE_MB}MB"
+        if [ "$size" -gt $((MAX_FIRMWARE_MB * 1024 * 1024)) ]; then
+          echo "❌ 固件超过 ${MAX_FIRMWARE_MB}MB，请在 .config 里继续精简软件包"
+          exit 1
+        fi
 
     - name: Upload bin directory
       uses: actions/upload-artifact@main
