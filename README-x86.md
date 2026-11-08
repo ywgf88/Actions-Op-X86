@@ -55,7 +55,7 @@ files/etc/uci-defaults/99-x86-defaults 首次开机默认值（IPv4、主机名�
 
 ## 四、怎么用
 
-1. 确认以下 5 个文件已按原路径存在于仓库 `ywgf88/Actions-OpenWrt-CT3003`（当前仓库已包含，无需重复添加）：
+1. 确认以下 5 个文件已按原路径存在于仓库 `ywgf88/Actions-Op-X86`（当前仓库已包含，无需重复添加）：
    - `.config`
    - `diy-part1.sh`
    - `diy-part2.sh`

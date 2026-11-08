@@ -1,9 +1,10 @@
-# Actions-OpenWrt-CT3003
+# Actions-Op-X86
 
 使用 GitHub Actions 云编译 OpenWrt 固件。基于 [P3TERX/Actions-OpenWrt](https://github.com/P3TERX/Actions-OpenWrt) 模板改造。
 
-> ⚠️ **仓库名与当前编译目标不一致**：名字里的 `CT3003` 是历史遗留。当前 `.config` 编译的是 **x86-64 generic 通用固件**，不是 Cetron CT3003。
-> CT3003（Lean lede / mediatek-filogic）的旧配置说明保留在 [README-CT3003.md](README-CT3003.md)，仅供存档，已不适用于当前编译流程。
+> 📌 仓库曾用名 `Actions-OpenWrt-CT3003`，2026-11-08 起更名为 **`Actions-Op-X86`**，以反映当前编译目标。
+> 当前 `.config` 编译的是 **x86-64 generic 通用固件**，不是 Cetron CT3003；旧设备（Lean lede / mediatek-filogic）的配置说明保留在 [README-CT3003.md](README-CT3003.md)，仅供存档，已不适用于当前编译流程。
+> GitHub 会自动把旧仓库地址重定向到新地址，收藏的旧链接仍可访问。
 
 ## 一、一眼看懂
 

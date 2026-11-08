@@ -1,8 +1,9 @@
 # CT3003 固件编译（Lean's OpenWrt + GitHub Actions）
 
-> ⚠️ **本文为历史存档，配置已失效**。仓库已于 2026-11-08 切换为编译 **x86-64 generic / 官方 OpenWrt 25.12.6** 固件，
-> 默认管理地址 `192.168.100.1`、默认主题 **Argon**。当前配置请以 [README.md](README.md) 为准，
-> 详细构建说明见 [README-x86.md](README-x86.md)。下文中的 `192.168.1.1`、Vantage 主题、Lean lede 源码等均为旧值，请勿照用。
+> ⚠️ **本文为历史存档，配置已失效**。仓库现已更名为 `Actions-Op-X86`，并于 2026-11-08 切换为编译
+> **x86-64 generic / 官方 OpenWrt 25.12.6** 固件，默认管理地址 `192.168.100.1`、默认主题 **Argon**。
+> 当前配置请以 [README.md](README.md) 为准，详细构建说明见 [README-x86.md](README-x86.md)。
+> 下文中的 `192.168.1.1`、Vantage 主题、Lean lede 源码等均为旧值，请勿照用。
 
 基于 [P3TERX/Actions-OpenWrt](https://github.com/P3TERX/Actions-OpenWrt) 模板改造，用来编译 **Cetron CT3003（MT7981 / Filogic，256M 内存 + 128M SPI-NAND）** 的固件。
 
