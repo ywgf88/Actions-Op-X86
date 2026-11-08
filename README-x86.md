@@ -1,5 +1,7 @@
 # Actions-OpenWrt · x86-64 / OpenWrt 25.12.6
 
+> 当前配置的速览（设备名称 / 固件分支 / 插件清单 / 默认 IP / 默认主题）见 [README.md](README.md)，本文是详细构建说明。
+
 把原来编译 **Cetron CT3003（Lean lede）** 的模板，改成编译 **官方 openwrt/openwrt 25.12.6 的 x86 固件**。
 不使用 Lean（coolsnowwolf/lede）源码。
 
@@ -53,14 +55,13 @@ files/etc/uci-defaults/99-x86-defaults 首次开机默认值（IPv4、主机名�
 
 ## 四、怎么用
 
-1. 把本目录里的 5 个文件按原路径放进你的仓库
-   `https://github.com/ywgf88/Actions-OpenWrt-CT3003`：
+1. 确认以下 5 个文件已按原路径存在于仓库 `ywgf88/Actions-OpenWrt-CT3003`（当前仓库已包含，无需重复添加）：
    - `.config`
    - `diy-part1.sh`
    - `diy-part2.sh`
    - `files/etc/uci-defaults/99-x86-defaults`
-   - `.github/workflows/openwrt-builder.yml`（覆盖原文件）
-2. 提交推送（GitHub 网页可直接「Add file → Upload files」整目录拖入，也可本地 `git`）。
+   - `.github/workflows/openwrt-builder.yml`
+2. 若修改过上述文件，提交并推送（可用本地 `git`，或 GitHub 网页「Add file → Upload files」）。
 3. 仓库 `Actions` → `OpenWrt Builder` → `Run workflow`。
 4. 首次编译约 **3~6 小时**（含 Rust 的 `quickfile`、Go 的 `clashoo`/`xray`，云 runner 2~4 核）
    ，成功后在 `Releases` 里下载。
