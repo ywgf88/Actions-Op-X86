@@ -1,0 +1,42 @@
+#!/bin/sh
+# 首次开机执行的默认设置：IPv4 网络 / 中文环境 / 默认主题
+# 由镜像内 files/etc/uci-defaults/ 覆盖到 /etc/uci-defaults/，运行一次后自动删除
+
+# ---------- 系统 ----------
+uci -q set system.@system[0].hostname='OpenWrt-x86'
+uci -q set system.@system[0].timezone='CST-8'
+uci -q set system.@system[0].zonename='Asia/Shanghai'
+uci -q set system.@system[0].description='OpenWrt 25.12.6 x86-64'
+uci -q commit system
+
+# ---------- LAN：固定 IPv4 ----------
+uci -q set network.lan.proto='static'
+uci -q set network.lan.ipaddr='192.168.100.1'
+uci -q set network.lan.netmask='255.255.255.0'
+uci -q delete network.lan.ip6assign
+uci -q delete network.lan.ip6addr
+uci -q delete network.lan.ip6prefix
+
+# ---------- WAN：默认 DHCP（PPPoE 自行在网页里改）---------
+uci -q set network.wan.proto='dhcp'
+uci -q delete network.wan6
+
+# ---------- 关闭 IPv6 下发（DHCPv6 / RA）---------
+uci -q delete dhcp.lan.dhcpv6
+uci -q delete dhcp.lan.ndp
+uci -q delete dhcp.odhcpd
+
+uci -q commit network
+uci -q commit dhcp
+
+# ---------- 默认主题：Argon ----------
+uci -q set luci.main.mediaurlbase='/luci-static/argon'
+uci -q set luci.themes.Argon='/luci-static/argon'
+uci -q set luci.themes.Vantage='/luci-static/vantage'
+uci -q set luci.themes.Aurora='/luci-static/aurora'
+uci -q commit luci
+
+# 关掉首次开机自带的 IPv6 相关服务（未安装时会自动跳过）
+/etc/init.d/odhcpd disable 2>/dev/null || true
+
+exit 0

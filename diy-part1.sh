@@ -1,23 +1,83 @@
 #!/bin/bash
-#
-# Cetron CT3003 定制版 diy-part1.sh
-# 作用：在更新 feeds 之前，调整 feeds 列表、引入额外软件包源码
-# 执行目录：OpenWrt 源码根目录
-#
+# diy-part1.sh —— 在 feeds update/install 之前执行
+# 作用：把官方源里没有的第三方插件源码放进 package/ 目录
+# 说明：openwrt/openwrt 官方源（packages/luci/routing/telephony）已包含
+#       docker、luci-app-dockerman、xray-core、sing-box、v2ray-geoip 等，
+#       所以 passwall 依赖包里这几个同名包要跳过，避免包名冲突。
+set -e
 
-# 1. 去掉 helloworld（ssr-plus 等）feed：与 packages feed 里的 xray-core/chinadns-ng 重复，且本固件用不到
-sed -i 's|^src-git helloworld|#src-git helloworld|' feeds.conf.default
+PKGDIR="package"
 
-# 2. 加入 PassWall2 插件源码
-#    PassWall2 依赖的 xray-core / chinadns-ng / geoview / tcping / v2ray-geodata
-#    在 Lean 自带 packages feed 里都有，不用再加 openwrt-passwall-packages，避免同名包冲突
-echo 'src-git passwall2 https://github.com/Openwrt-Passwall/openwrt-passwall2.git' >>feeds.conf.default
+clone() {
+	local repo="$1" dst="$2"
+	echo "==> 拉取 ${repo}"
+	for i in 1 2 3; do
+		rm -rf "${dst}"
+		if git clone --depth 1 "${repo}" "${dst}"; then
+			return 0
+		fi
+		echo "   第 ${i} 次失败，重试..."
+		sleep 3
+	done
+	echo "!! 拉取 ${repo} 失败"
+	return 1
+}
 
-# 3. 引入 Vantage 主题（LuCI 官方源没有这个主题，需要单独拉源码）
-git clone --depth 1 https://github.com/anothaDev/luci-theme-vantage.git /tmp/vantage-src
-rm -rf package/luci-theme-vantage package/luci-app-vantage
-cp -rf /tmp/vantage-src/luci-theme-vantage package/
-cp -rf /tmp/vantage-src/luci-app-vantage package/
+# ---------------------------------------------------------------- PassWall 2
+clone https://github.com/Openwrt-Passwall/openwrt-passwall2.git /tmp/src-passwall2
+cp -rf /tmp/src-passwall2/luci-app-passwall2 "${PKGDIR}/"
 
-# 4. 打印 feeds 列表，方便日志核对
-cat feeds.conf.default
+# PassWall 2 依赖的私有包（官方源里没有的部分）
+clone https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git /tmp/src-passwall-pkgs
+mkdir -p "${PKGDIR}/passwall-packages"
+for d in /tmp/src-passwall-pkgs/*/; do
+	name="$(basename "${d}")"
+	case "${name}" in
+		xray-core|sing-box|smartdns|hysteria|v2ray-geodata)
+			echo "==> 跳过 ${name}（官方 packages 源已提供同名包）"
+			;;
+		*)
+			cp -rf "${d}" "${PKGDIR}/passwall-packages/"
+			;;
+	esac
+done
+
+# ---------------------------------------------------------------- Clashoo
+clone https://github.com/kenzok8/openwrt-clashoo.git /tmp/src-clashoo
+cp -rf /tmp/src-clashoo/clashoo "${PKGDIR}/"
+cp -rf /tmp/src-clashoo/luci-app-clashoo "${PKGDIR}/"
+
+# ---------------------------------------------------------------- QuickFile（文件管理）
+clone https://github.com/sbwml/luci-app-quickfile.git /tmp/src-quickfile
+cp -rf /tmp/src-quickfile/luci-app-quickfile "${PKGDIR}/"
+cp -rf /tmp/src-quickfile/quickfile "${PKGDIR}/"
+
+# ---------------------------------------------------------------- DiskMan（磁盘管理）
+clone https://github.com/sbwml/luci-app-diskman.git /tmp/src-diskman
+cp -rf /tmp/src-diskman/luci-app-diskman "${PKGDIR}/"
+
+# ---------------------------------------------------------------- Run（.run 安装器）
+clone https://github.com/wukongdaily/luci-app-run.git /tmp/src-run
+cp -rf /tmp/src-run/luci-app-run "${PKGDIR}/"
+
+# ---------------------------------------------------------------- Partexp（分区扩容）
+clone https://github.com/sirpdboy/luci-app-partexp.git /tmp/src-partexp
+cp -rf /tmp/src-partexp/luci-app-partexp "${PKGDIR}/"
+
+# ---------------------------------------------------------------- 主题：Argon（含内置配置页）
+clone https://github.com/jerrykuku/luci-theme-argon.git "${PKGDIR}/luci-theme-argon"
+
+# ---------------------------------------------------------------- 主题：Aurora（含配置插件）
+clone https://github.com/eamonxg/luci-theme-aurora.git /tmp/src-aurora
+cp -rf /tmp/src-aurora "${PKGDIR}/luci-theme-aurora"
+clone https://github.com/eamonxg/luci-app-aurora-config.git "${PKGDIR}/luci-app-aurora-config"
+
+# ---------------------------------------------------------------- 主题：Vantage（含仪表盘）
+clone https://github.com/anothaDev/luci-theme-vantage.git /tmp/src-vantage
+cp -rf /tmp/src-vantage/luci-theme-vantage "${PKGDIR}/"
+cp -rf /tmp/src-vantage/luci-app-vantage "${PKGDIR}/"
+
+rm -rf /tmp/src-*
+
+echo "==> 第三方插件目录准备完成："
+find "${PKGDIR}" -maxdepth 2 -name Makefile | sed 's|^|   |'

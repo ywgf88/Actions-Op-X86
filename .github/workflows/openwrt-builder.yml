@@ -1,25 +1,30 @@
 #
 # https://github.com/P3TERX/Actions-OpenWrt
 #
-# File: .github/workflows/openwrt-bulder.yml
+# File: .github/workflows/openwrt-builder.yml
 # Description: Build OpenWrt using GitHub Actions
 #
-# Copyright (c) 2019-2024 P3TERX <https://p3terx.com>
+# 本仓库改动：源码改为官方 openwrt/openwrt，版本 v25.12.6（openwrt-25.12 分支的 25.12.6 发布），
+# 目标改为 x86/64 generic，并适配 25.12 起使用的 apk 打包机制、x86 镜像命名。
 #
-# This is free software, licensed under the MIT License.
-# See /LICENSE for more information.
-#
-
 name: OpenWrt Builder
 
 on:
   repository_dispatch:
   workflow_dispatch:
 
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
-  # Lean's OpenWrt 源码（Cetron CT3003 / MT7981 由 mediatek-filogic 目标支持）
-  REPO_URL: https://github.com/coolsnowwolf/lede
-  REPO_BRANCH: master
+  # 官方源码 + 25.12.6 发布版本（对应 openwrt-25.12 分支的 v25.12.6 标签）
+  REPO_URL: https://github.com/openwrt/openwrt
+  REPO_BRANCH: v25.12.6
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: .config
   DIY_P1_SH: diy-part1.sh
@@ -27,15 +32,16 @@ env:
   UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
-  # 固件体积上限（MB）：CT3003 是 128M NAND，这里卡到 58M
-  MAX_FIRMWARE_MB: 58
+  # x86 软路由没有 128M NAND 的限制，这里只防呆：单个镜像上限（MB）
+  MAX_FIRMWARE_MB: 300
+  # 编译并发：云 runner 只有 2~4 核，-j3 比 -j$(nproc) 更稳
+  JOBS: 3
   TZ: Asia/Shanghai
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     timeout-minutes: 360
-
     steps:
     - name: Checkout
       uses: actions/checkout@main
@@ -47,7 +53,7 @@ jobs:
         sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
         sudo docker image prune --all --force
         sudo -E apt-get -qq update
-        sudo -E apt-get -qq install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch pkgconf python2.7 python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+        sudo -E apt-get -qq install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch pkgconf python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
         sudo -E apt-get -qq autoremove --purge
         sudo -E apt-get -qq clean
         sudo timedatectl set-timezone "$TZ"
@@ -58,7 +64,8 @@ jobs:
       working-directory: /workdir
       run: |
         df -hT $PWD
-        git clone $REPO_URL -b $REPO_BRANCH openwrt
+        git clone $REPO_URL -b $REPO_BRANCH --depth 1 openwrt
+        cd openwrt && git describe --tags --always || true
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
     - name: Load custom feeds
@@ -86,20 +93,55 @@ jobs:
       run: |
         cd openwrt
         make defconfig
-        echo "==== 关键配置检查 ===="
-        grep -q '^CONFIG_TARGET_mediatek_filogic_DEVICE_cetron_ct3003=y' .config \
-          || { echo "❌ 没有选中 Cetron CT3003，请检查 .config"; exit 1; }
-        grep -q '^CONFIG_PACKAGE_luci-app-passwall2=y' .config || echo "⚠️ PassWall2 未选中"
-        grep -q '^CONFIG_PACKAGE_luci-theme-vantage=y' .config || echo "⚠️ Vantage 主题未选中"
-        echo "版本号：$(grep '^CONFIG_VERSION_NUMBER' .config)"
-        echo "IPv6 组件 odhcp6c：$(grep -c '^CONFIG_PACKAGE_odhcp6c=y' .config || true)"
+        echo "=========== 关键配置检查 ==========="
+        fail=0
+        must_have() {
+          if grep -q "^$1=y" .config; then
+            echo "✓ $2"
+          else
+            echo "❌ 缺少 $2 ($1)"
+            fail=1
+          fi
+        }
+        # 目标板
+        must_have CONFIG_TARGET_x86_64_DEVICE_generic "x86/64 generic 目标"
+        if grep -q '^CONFIG_VERSION_NUMBER="25.12.6"' .config; then
+          echo "✓ 版本号 25.12.6"
+        else
+          echo "⚠️ 版本号不是 25.12.6（仅影响镜像文件名）"
+        fi
+        # 中文包
+        must_have CONFIG_PACKAGE_luci-i18n-base-zh-cn "luci-i18n-base-zh-cn"
+        must_have CONFIG_PACKAGE_luci-i18n-firewall-zh-cn "luci-i18n-firewall-zh-cn"
+        must_have CONFIG_PACKAGE_luci-i18n-argon-config-zh-cn "Argon 中文包"
+        # 主题
+        must_have CONFIG_PACKAGE_luci-theme-argon "Argon 主题"
+        must_have CONFIG_PACKAGE_luci-theme-vantage "Vantage 主题"
+        must_have CONFIG_PACKAGE_luci-theme-aurora "Aurora 主题"
+        # 插件
+        must_have CONFIG_PACKAGE_luci-app-run "luci-app-run"
+        must_have CONFIG_PACKAGE_luci-app-quickfile "luci-app-quickfile"
+        must_have CONFIG_PACKAGE_luci-app-partexp "luci-app-partexp"
+        must_have CONFIG_PACKAGE_luci-app-passwall2 "PassWall2"
+        must_have CONFIG_PACKAGE_luci-app-clashoo "Clashoo"
+        must_have CONFIG_PACKAGE_luci-app-diskman "DiskMan"
+        must_have CONFIG_PACKAGE_luci-app-dockerman "Docker 面板"
+        must_have CONFIG_PACKAGE_docker "docker"
+        echo "------------------------------------"
+        echo "IPv6 组件 odhcp6c: $(grep -c '^CONFIG_PACKAGE_odhcp6c=y' .config || true) （期望 0）"
+        echo "默认 IPv4 相关：$(grep -c '^CONFIG_PACKAGE_odhcp6c is not set' .config || true)"
+        if [ "$fail" = "1" ]; then
+          echo "❌ 有必需包未被选中，请查看上面的报错再改 .config / diy-part1.sh"
+          exit 1
+        fi
+        echo "✅ 配置检查通过"
 
     - name: Download package
       id: package
       run: |
         cd openwrt
         make defconfig
-        make download -j8
+        make download -j8 || make download -j1
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
 
@@ -107,11 +149,11 @@ jobs:
       id: compile
       run: |
         cd openwrt
-        echo -e "$(nproc) thread compile"
-        make -j$(nproc) || make -j1 || make -j1 V=s
+        echo "$(nproc) cores, build with -j${JOBS}"
+        make -j${JOBS} || make -j1 || make -j1 V=s
         echo "status=success" >> $GITHUB_OUTPUT
-        grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
-        [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
+        grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME || true
+        [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(head -n1 DEVICE_NAME)" >> $GITHUB_ENV
         echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
     - name: Check space usage
@@ -121,17 +163,23 @@ jobs:
     - name: Check firmware size
       if: steps.compile.outputs.status == 'success' && !cancelled()
       run: |
-        cd openwrt/bin/targets/*/*
+        cd openwrt/bin/targets/x86/64
         ls -lh
-        fw=$(ls *sysupgrade*.bin 2>/dev/null | head -1)
-        [ -z "$fw" ] && { echo "❌ 未找到 sysupgrade 固件"; exit 1; }
-        size=$(stat -c %s "$fw")
-        mb=$((size / 1024 / 1024))
-        echo "固件 $fw 体积 ${mb}MB，上限 ${MAX_FIRMWARE_MB}MB"
-        if [ "$size" -gt $((MAX_FIRMWARE_MB * 1024 * 1024)) ]; then
-          echo "❌ 固件超过 ${MAX_FIRMWARE_MB}MB，请在 .config 里继续精简软件包"
+        fw=$(ls *squashfs-combined-efi.img.gz 2>/dev/null | head -1)
+        if [ -z "$fw" ]; then
+          echo "❌ 未找到 squashfs-combined-efi 镜像，请查看编译日志"
           exit 1
         fi
+        for f in *squashfs-combined-efi.img.gz *squashfs-combined.img.gz *ext4-combined-efi.img.gz; do
+          [ -f "$f" ] || continue
+          size=$(stat -c %s "$f")
+          mb=$((size / 1024 / 1024))
+          echo "镜像 $f 体积 ${mb}MB，上限 ${MAX_FIRMWARE_MB}MB"
+          if [ "$size" -gt $((MAX_FIRMWARE_MB * 1024 * 1024)) ]; then
+            echo "❌ $f 超过 ${MAX_FIRMWARE_MB}MB"
+            exit 1
+          fi
+        done
 
     - name: Upload bin directory
       uses: actions/upload-artifact@main
@@ -144,7 +192,7 @@ jobs:
       id: organize
       if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: |
-        cd openwrt/bin/targets/*/*
+        cd openwrt/bin/targets/x86/64
         rm -rf packages
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
@@ -161,8 +209,21 @@ jobs:
       if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       run: |
         echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
-        touch release.txt
-        [ ${UPLOAD_GOFILE} = true && ${{ steps.gofile.outputs.url }} ] && echo "🔗 [GoFile](${{ steps.gofile.outputs.url }})" >> release.txt
+        {
+          echo '## OpenWrt 25.12.6 / x86-64'
+          echo ''
+          echo '- 源码：openwrt/openwrt `v25.12.6`（openwrt-25.12 分支的 25.12.6 发布）'
+          echo '- 目标：`x86/64` generic'
+          echo '- 默认网络：IPv4（LAN `192.168.100.1/24`，WAN 为 DHCP，不含 DHCPv6 / RA）'
+          echo '- 默认主题：Argon（另装 Vantage、Aurora，可在「系统 - 语言和界面」切换）'
+          echo '- 中文包：base / firewall / dockerman / passwall2 / clashoo / argon 等'
+          echo '- 插件：PassWall2、Clashoo、QuickFile、DiskMan、Partexp、Run、Docker(Dockerman)'
+          echo ''
+          echo '### 刷写'
+          echo '下载 `openwrt-25.12.6-x86-64-generic-squashfs-combined-efi.img.gz`，解压后用 balenaEtcher / Rufus / dd 写入 U 盘或硬盘；UEFI 启动用 combined-efi，传统 BIOS 用 combined。'
+          echo ''
+          echo '首次开机后访问 http://192.168.100.1'
+        } > release.txt
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware to release
@@ -174,9 +235,11 @@ jobs:
         tag_name: ${{ steps.tag.outputs.release_tag }}
         body_path: release.txt
         files: ${{ env.FIRMWARE }}/*
+        overwrite_files: true
 
     - name: Delete workflow runs
       uses: Mattraks/delete-workflow-runs@main
+      continue-on-error: true
       with:
         retain_days: 0
         keep_minimum_runs: 2
@@ -184,6 +247,7 @@ jobs:
     - name: Remove old Releases
       uses: dev-drprasad/delete-older-releases@master
       if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      continue-on-error: true
       with:
         keep_latest: 3
         delete_tags: true

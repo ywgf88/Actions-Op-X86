@@ -1,24 +1,36 @@
 #!/bin/bash
-#
-# Cetron CT3003 定制版 diy-part2.sh
-# 作用：在 feeds 安装完成之后，修改源码里的默认值（主题、主机名、时区、IPv4 单栈）
-# 执行目录：OpenWrt 源码根目录
-#
+# diy-part2.sh —— 在 .config 放入 openwrt 之后、make defconfig 之前执行
+# 作用：校验必需的第三方包目录是否齐全（缺失时尽早报错，而不是编译到一半才失败）
+set -e
 
-# 1. 默认主题改为 Vantage（LuCI 集合包默认依赖 bootstrap，改成 vantage）
-find feeds/luci/collections -name Makefile -exec sed -i 's/luci-theme-bootstrap/luci-theme-vantage/g' {} \;
+echo "==> 检查第三方插件目录"
 
-# 2. 主机名
-sed -i "s/hostname='LEDE'/hostname='CT3003'/" package/base-files/files/bin/config_generate
+check_dir() {
+	if [ ! -d "package/$1" ]; then
+		echo "❌ 缺少 package/$1，请检查 diy-part1.sh 是否执行成功"
+		exit 1
+	fi
+	echo "   ✓ $1"
+}
 
-# 3. 时区改为中国标准时间（默认是 GMT0，不装 zonename 会显示成 UTC）
-sed -i "s/timezone='GMT0'/timezone='CST-8'/" package/base-files/files/bin/config_generate
+check_dir luci-app-passwall2
+check_dir passwall-packages/geoview
+check_dir passwall-packages/tcping
+check_dir passwall-packages/chinadns-ng
+check_dir clashoo
+check_dir luci-app-clashoo
+check_dir quickfile
+check_dir luci-app-quickfile
+check_dir luci-app-diskman
+check_dir luci-app-run
+check_dir luci-app-partexp
+check_dir luci-theme-argon
+check_dir luci-theme-vantage
+check_dir luci-app-vantage
+check_dir luci-theme-aurora
+check_dir luci-app-aurora-config
 
-# 4. 默认局域网地址保持 192.168.1.1；如需改成别的，取消下面这行注释并改数字
-#sed -i 's/192.168.1.1/192.168.100.2/g' package/base-files/files/bin/config_generate
+echo "==> 目标板 / 版本："
+grep -E '^CONFIG_TARGET_(x86|BOARD|SUBTARGET|PROFILE|DEVICE)|^CONFIG_VERSION_NUMBER' .config || true
 
-# 5. IPv4 单栈：让首次生成配置时完全不创建 IPv6 地址段与 wan6
-#    （config_generate 里所有 IPv6 初始化都用 /proc/sys/net/ipv6 做判断，屏蔽掉即可）
-sed -i 's|\[ -e /proc/sys/net/ipv6 \]|[ -e /proc/sys/net/ipv6-disabled ]|g' package/base-files/files/bin/config_generate
-
-echo "diy-part2 done."
+echo "==> 默认网络与主题由 files/etc/uci-defaults/99-x86-defaults 在首次开机时生效"
