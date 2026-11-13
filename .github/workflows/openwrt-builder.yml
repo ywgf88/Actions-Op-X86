@@ -165,18 +165,6 @@ jobs:
         fi
         echo "✅ 配置检查通过"
 
-    # 缓存两样东西：ccache（重复的 C/C++ 编译直接命中）和 dl（源码 tarball，省下载）
-    - name: Restore ccache and dl cache
-      id: cache-restore
-      uses: actions/cache@v4
-      with:
-        path: |
-          /workdir/openwrt/.ccache
-          /workdir/openwrt/dl
-        key: ccache-${{ github.repository }}-${{ hashFiles('openwrt/.config') }}-${{ github.run_id }}
-        restore-keys: |
-          ccache-${{ github.repository }}-${{ hashFiles('openwrt/.config') }}-
-          ccache-${{ github.repository }}-
     - name: Download package
       id: package
       run: |
@@ -188,18 +176,10 @@ jobs:
 
     - name: Compile the firmware
       id: compile
-      env:
-        CCACHE_DIR: /workdir/openwrt/.ccache
-        CCACHE_MAXSIZE: 3G
       run: |
         cd openwrt
         echo "$(nproc) cores, build with -j${JOBS}"
-        ccache -M 3G >/dev/null 2>&1 || true
-        echo "==== ccache 编译前状态 ===="
-        ccache -s 2>/dev/null || echo "(ccache 不可用)"
         make -j${JOBS} || make -j1 V=s
-        echo "==== ccache 命中统计 ===="
-        ccache -s 2>/dev/null || true
         echo "status=success" >> $GITHUB_OUTPUT
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME || true
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(head -n1 DEVICE_NAME)" >> $GITHUB_ENV
